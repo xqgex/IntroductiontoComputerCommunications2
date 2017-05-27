@@ -1,0 +1,11 @@
+pktID Time Sadd Sport Dadd Dport length [weight]
+
+pktID	Unique ID (long int)
+Time	Arrival time (long int)
+Sadd	Source ip address (string Ex. '192.168.0.1')
+Sport	Source port (int [0,65535])
+Dadd	Destination ip address (string Ex. '192.168.0.1')
+Dport	Destination port (int [0,65535])
+length	Packet length (int [64,16384])
+weight	Flow weight (int)
+
