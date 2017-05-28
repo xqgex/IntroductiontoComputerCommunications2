@@ -38,17 +38,28 @@ int program_end(int error, FILE* in_fd, FILE* out_fd) {
 	}
 	return res;
 }
+
+		int queue(FILE* in_fd,int input_quantum,int input_weight) {
+			//TODO
+		} 
+
+		int send(){
+			//TODO
+		}
+
 int main(int argc, char *argv[]) {
 	/* Function variables */
-	char errmsg[256];			/* The message to print in case of an error */
-	char input_quantum_char[10];		/* The quantum (type == string) */
+	char errmsg[256];				/* The message to print in case of an error */
+	char input_quantum_char[10];	/* The quantum (type == string) */
 	char input_weight_char[10];		/* The weight (type == string) */
 	char* endptr_QUANTUM;			/* strtol() for 'input_quantum' */
 	char* endptr_WEIGHT;			/* strtol() for 'input_weight' */
-	FILE* in_fd = NULL;			/* The input file */
+	FILE* in_fd = NULL;				/* The input file */
 	FILE* out_fd = NULL;			/* The output file */
 	int input_quantum = 0;			/* The quantum (type == int) */
 	int input_weight = 0;			/* The weight (type == int) */
+	int more_to_send = 1;			/* flag for send loop (type == int) */
+	int more_to_read  = 1;			/* flag for acsept loop (type == int) */
 	/* Check correct call structure */
 	if (argc != 6) {
 		if (argc < 6) {
@@ -115,7 +126,14 @@ int main(int argc, char *argv[]) {
 		return program_end(EXIT_FAILURE, in_fd, out_fd);
 	}
 	/* TODO TODO TODO */
-	// test push 
+	FILE* in_fd = NULL;				/* The input file */
+	FILE* out_fd = NULL;			/* The output file */
+	int input_quantum = 0;			/* The quantum (type == int) */
+	int input_weight = 0;	
+	while (more_to_send && more_to_read) {
+		more_to_read = queue(in_fd,input_quantum,input_weight,pack_queue);
+		more_to_send = send(out_fd,pack_queue);
+	}
 	/* TODO TODO TODO */
 	return program_end(EXIT_SUCCESS, in_fd, out_fd);
 }
