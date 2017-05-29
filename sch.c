@@ -11,26 +11,29 @@
 #define F_ERROR_FUNCTION_STRTOL_MSG	"[Error] strtol() failed with an error: %s\n"
 #define F_ERROR_INPUT_CLOSE_MSG		"[Error] Close input file: %s\n"
 #define F_ERROR_INPUT_FILE_MSG		"[Error] Input file '%s': %s\n"
+#define F_ERROR_IP_INVALID_MSG		"[Error] The ip address %s is not a valis IPv4\n"
+#define F_ERROR_LENGTH_INVALID_MSG	"[Error] The length must be a number between 64 to 16384\n"
 #define F_ERROR_OUTPUT_CLOSE_MSG	"[Error] Close output file: %s\n"
 #define F_ERROR_OUTPUT_FILE_MSG		"[Error] Output file '%s': %s\n"
 #define F_ERROR_QUANTUM_INVALID_MSG	"[Error] The quantum must be non negative integer\n"
+#define F_ERROR_PORT_INVALID_MSG	"[Error] The port must be a number between 0 to 65535\n"
 #define F_ERROR_TYPE_MSG		"[Error] The only valid types are RR and DRR\n"
 #define F_ERROR_WEIGHT_INVALID_MSG	"[Error] The weight must be a positive integer\n"
 
 FILE* IN_FILE = NULL;			/* The input file */
 FILE* OUT_FILE = NULL;			/* The output file */
 typedef struct Packets {
-	char pktID[20];		/* Unique ID (long int) */
-	char Time[20];		/* Arrival time (long int) */
+	char pktID[20];		/* Unique ID (long int [-9223372036854775808,9223372036854775807]) */
+	char Time[20];		/* Arrival time (long int [-9223372036854775808,9223372036854775807]) */
 	char Sadd[15];		/* Source ip address (string Ex. '192.168.0.1') */
-	char Sport[5];		/* Source port (int [0,65535]) */
+	int Sport;		/* Source port (int [0,65535]) */
 	char Dadd[15];		/* Destination ip address (string Ex. '192.168.0.1') */
-	char Dport[5];		/* Destination port (int [0,65535]) */
-	char length[5];		/* Packet length (int [64,16384]) */
-	char weight[11];	/* Flow weight (int) */
+	int Dport;		/* Destination port (int [0,65535]) */
+	int length;		/* Packet length (int [64,16384]) */
+	int weight;		/* Flow weight (int [1,2147483647]) */
 } *packet; 
 
-/* int program_end(int error) { }t
+/* int program_end(int error) { }
  *
  * Receive exit code,
  * Close gracefully everything,
@@ -57,6 +60,65 @@ int program_end(int error) {
 	}
 	return res;
 }
+/* validate_IPv4(const char *s) { }
+ *
+ * Receive string,
+ * Return 0 if input is a valid IPv4 address,
+ * return -1 otherwise
+ */
+int validate_IPv4(const char *s) { /* http://stackoverflow.com/questions/791982/determine-if-a-string-is-a-valid-ip-address-in-c#answer-14181669 */
+	char tail[16];
+	int c,i;
+	int len = strlen(s);
+	unsigned int d[4];
+	if (len < 7 || 15 < len) {
+		return -1;
+	}
+	tail[0] = 0;
+	c = sscanf(s,"%3u.%3u.%3u.%3u%s",&d[0],&d[1],&d[2],&d[3],tail);
+	if (c != 4 || tail[0]) {
+		return -1;
+	}
+	for (i=0;i<4;i++) {
+		if (d[i] > 255) {
+			return -1;
+		}
+	}
+	return 0;
+}
+/* int convert_strin2int(char *input, int *output) { }
+ * 
+ * Receive:	input string
+ * 		pointer where to save the output int
+ * 		limitation (included).on the int range
+ * 		message to print in case of an error
+ * Convert the string to int
+ * Return 0 if succeed,
+ * Return errno if error occurred.
+ */
+int convert_strin2int(char *input, int *output, int from, int to, char *error_string) {
+	/* Function variables */
+	char errmsg[256];	/* The message to print in case of an error */
+	char output_char[10];	/* variable for sprintf() */
+	char *endptr;		/* variable for strtol() */
+	/* Function body */
+	*output = strtol(input, &endptr, 10); /* If an underflow occurs. strtol() returns LONG_MIN. If an overflow occurs, strtol() returns LONG_MAX. In both cases, errno is set to ERANGE. */
+	if ((errno == ERANGE && (*output == (int)LONG_MAX || *output == (int)LONG_MIN)) || (errno != 0 && *output == 0)) {
+		strerror_r(errno, errmsg, 255);
+		fprintf(stderr, F_ERROR_FUNCTION_STRTOL_MSG, errmsg);
+		return errno;
+	} else if ((endptr == input) || (*output < from) || (*output > to)) { /* (Empty string) or (Not in range) */
+		fprintf(stderr, error_string);
+		return EXIT_FAILURE;
+	} else if (sprintf(output_char, "%d", *output) < 0) { /* sprintf(), If an output error is encountered, a negative value is returned. */
+		fprintf(stderr, F_ERROR_FUNCTION_SPRINTF_MSG);
+		return EXIT_FAILURE;
+	} else if (strncmp(output_char, input, 10) != 0) { /* Contain invalid chars */
+		fprintf(stderr, error_string);
+		return EXIT_FAILURE;
+	}
+	return EXIT_SUCCESS;
+}
 /* int read_packet() { }
  * 
  * Receive nothing
@@ -65,10 +127,13 @@ int program_end(int error) {
  * Return NULL in case EOF reached or if an error occurred.
  */
 int read_packet() {
+	/* Function variables */
 	char line[105];	/* 105 == pktID[20]+Time[20]+Sadd[15]+Sport[5]+Dadd[15]+Dport[5]+length[5]+weight[11]+spaces[7]+"\r\n"[2] */
 	char *word;	/* Each string splited by whitespace */
 	char *newline;
 	int count;	/* Count how many words was in the current line */
+	int res = 0;	/* Temporary variable to store function response */
+	/* Function body */
 	packet pk = malloc(sizeof(packet));
 	if (fgets(line, sizeof(line), IN_FILE)) { /* return s on success, and NULL on error or when end of file occurs while no characters have been read. */
 		count = 0; /* Init the counter */
@@ -89,17 +154,35 @@ int read_packet() {
 			} else if ((count == 1)&&(strlen(word) <= 20)) {
 				strncpy(pk->Time, word, 20);
 			} else if ((count == 2)&&(strlen(word) <= 15)) {
-				strncpy(pk->Sadd, word, 15);
+				if (validate_IPv4(word) == -1) {
+					fprintf(stderr, F_ERROR_IP_INVALID_MSG, word);
+					return 0;
+				} else {
+					strncpy(pk->Sadd, word, 15);
+				}
 			} else if ((count == 3)&&(strlen(word) <= 5)) {
-				strncpy(pk->Sport, word, 5);
+				if ((res = convert_strin2int(word, &pk->Sport, 0, 65535, F_ERROR_PORT_INVALID_MSG)) > 0) {
+					return 0; /* Error occurred, Exit */
+				}
 			} else if ((count == 4)&&(strlen(word) <= 15)) {
-				strncpy(pk->Dadd, word, 15);
+				if (validate_IPv4(word) == -1) {
+					fprintf(stderr, F_ERROR_IP_INVALID_MSG, word);
+					return 0;
+				} else {
+					strncpy(pk->Dadd, word, 15);
+				}
 			} else if ((count == 5)&&(strlen(word) <= 5)) {
-				strncpy(pk->Dport, word, 5);
+				if ((res = convert_strin2int(word, &pk->Dport, 0, 65535, F_ERROR_PORT_INVALID_MSG)) > 0) {
+					return 0; /* Error occurred, Exit */
+				}
 			} else if ((count == 6)&&(strlen(word) <= 5)) {
-				strncpy(pk->length, word, 5);
+				if ((res = convert_strin2int(word, &pk->length, 64, 16384, F_ERROR_LENGTH_INVALID_MSG)) > 0) {
+					return 0; /* Error occurred, Exit */
+				}
 			} else if ((count == 7)&&(strlen(word) <= 11)) {
-				strncpy(pk->weight, word, 11);
+				if ((res = convert_strin2int(word, &pk->weight, 1, 2147483647, F_ERROR_WEIGHT_INVALID_MSG)) > 0) {
+					return 0; /* Error occurred, Exit */
+				}
 			} else {
 				printf("Died at %d - %s\n", count, word); /* TODO DEBUG XXX XXX XXX */
 				/* free(pk); // Error in `./sch': free(): invalid next size (fast) *//* TODO DEBUG XXX XXX XXX */
@@ -112,7 +195,7 @@ int read_packet() {
 			printf("Died with %d\n", count); /* TODO DEBUG XXX XXX XXX */
 			return 0; /* Invalid input, Length is too short */
 		}
-		printf("pktID='%s', Time='%s', Sadd='%s', Sport='%s', Dadd='%s', Dport='%s', length='%s', weight='%s'\n", pk->pktID, pk->Time, pk->Sadd, pk->Sport, pk->Dadd, pk->Dport, pk->length, pk->weight); /* TODO DEBUG XXX XXX XXX */
+		printf("pktID='%s', Time='%s', Sadd='%s', Sport='%d', Dadd='%s', Dport='%d', length='%d', weight='%s'\n", pk->pktID, pk->Time, pk->Sadd, pk->Sport, pk->Dadd, pk->Dport, pk->length, pk->weight); /* TODO DEBUG XXX XXX XXX */
 		return 1;
 	} else {
 		return 0; /* EOF */
@@ -127,14 +210,11 @@ int send_packet() {
 int main(int argc, char *argv[]) {
 	/* Function variables */
 	char errmsg[256];			/* The message to print in case of an error */
-	char input_quantum_char[10];		/* The quantum (type == string) */
-	char input_weight_char[10];		/* The weight (type == string) */
-	char* endptr_QUANTUM;			/* strtol() for 'input_quantum' */
-	char* endptr_WEIGHT;			/* strtol() for 'input_weight' */
-	int input_quantum = 0;			/* The quantum (type == int) */
-	int input_weight = 0;			/* The weight (type == int) */
-	int more_to_send = 1;			/* flag for send loop */
-	int more_to_read  = 1;			/* flag for acsept loop */
+	int input_quantum = 0;			/* The quantum */
+	int input_weight = 0;			/* The weight */
+	int more_to_send = 1;			/* Flag for send loop */
+	int more_to_read  = 1;			/* Flag for acsept loop */
+	int res = 0;				/* Temporary variable to store function response */
 	/* Check correct call structure */
 	if (argc != 6) {
 		if (argc < 6) {
@@ -163,42 +243,12 @@ int main(int argc, char *argv[]) {
 		return program_end(errno);
 	}
 	/* Check weight => argv[4] */
-	input_weight = strtol(argv[4], &endptr_WEIGHT, 10); /* If an underflow occurs. strtol() returns LONG_MIN. If an overflow occurs, strtol() returns LONG_MAX. In both cases, errno is set to ERANGE. */
-	if ((errno == ERANGE && (input_weight == (int)LONG_MAX || input_weight == (int)LONG_MIN)) || (errno != 0 && input_weight == 0)) {
-		strerror_r(errno, errmsg, 255);
-		fprintf(stderr, F_ERROR_FUNCTION_STRTOL_MSG, errmsg);
-		return program_end(errno);
-	}
-	else if ((endptr_WEIGHT == argv[4]) || (input_weight < 1)) { /* (Empty string) or (Not positive) */
-		fprintf(stderr, F_ERROR_WEIGHT_INVALID_MSG);
-		return program_end(EXIT_FAILURE);
-	}
-	else if (sprintf(input_weight_char, "%d", input_weight) < 0) { /* sprintf(), If an output error is encountered, a negative value is returned. */
-		fprintf(stderr, F_ERROR_FUNCTION_SPRINTF_MSG);
-		return program_end(EXIT_FAILURE);
-	}
-	else if (strncmp(input_weight_char, argv[4], 10) != 0) { /* Contain invalid chars */
-		fprintf(stderr, F_ERROR_WEIGHT_INVALID_MSG);
-		return program_end(EXIT_FAILURE);
+	if ((res = convert_strin2int(argv[4], &input_weight, 1, 2147483647, F_ERROR_WEIGHT_INVALID_MSG)) > 0) {
+		return program_end(res); /* Error occurred, Exit */
 	}
 	/* Check quantum => argv[5] */
-	input_quantum = strtol(argv[5], &endptr_QUANTUM, 10); /* If an underflow occurs. strtol() returns LONG_MIN. If an overflow occurs, strtol() returns LONG_MAX. In both cases, errno is set to ERANGE. */
-	if ((errno == ERANGE && (input_quantum == (int)LONG_MAX || input_quantum == (int)LONG_MIN)) || (errno != 0 && input_quantum == 0)) {
-		strerror_r(errno, errmsg, 255);
-		fprintf(stderr, F_ERROR_FUNCTION_STRTOL_MSG, errmsg);
-		return program_end(errno);
-	}
-	else if ((endptr_QUANTUM == argv[5]) || (input_quantum < 0)) { /* (Empty string) or (Negative) */
-		fprintf(stderr, F_ERROR_QUANTUM_INVALID_MSG);
-		return program_end(EXIT_FAILURE);
-	}
-	else if (sprintf(input_quantum_char, "%d", input_quantum) < 0) { /* sprintf(), If an output error is encountered, a negative value is returned. */
-		fprintf(stderr, F_ERROR_FUNCTION_SPRINTF_MSG);
-		return program_end(EXIT_FAILURE);
-	}
-	else if (strncmp(input_quantum_char, argv[5], 10) != 0) { /* Contain invalid chars */
-		fprintf(stderr, F_ERROR_QUANTUM_INVALID_MSG);
-		return program_end(EXIT_FAILURE);
+	if ((res = convert_strin2int(argv[5], &input_quantum, 0, 2147483647, F_ERROR_QUANTUM_INVALID_MSG)) > 0) {
+		return program_end(res); /* Error occurred, Exit */
 	}
 	/* TODO TODO TODO */
 	while (more_to_send && more_to_read) {
