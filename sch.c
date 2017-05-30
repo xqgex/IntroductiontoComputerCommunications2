@@ -7,6 +7,7 @@
 #define USAGE_OPERANDS_MISSING_MSG	"Missing operands\nUsage: %s <TYPE [RR/DRR]> <INPUT FILE> <OUTPUT FILE> <WEIGHT> <QUANTUM>\n"
 #define USAGE_OPERANDS_SURPLUS_MSG	"Too many operands\nUsage: %s <TYPE [RR/DRR]> <INPUT FILE> <OUTPUT FILE> <WEIGHT> <QUANTUM>\n"
 #define ERROR_EXIT_MSG			"Exiting...\n"
+#define F_ERROR_ENQUEUE_FAILED_MSG	"[Error] Program failed to enqueue packed ID: %ld\n"
 #define F_ERROR_FUNCTION_SPRINTF_MSG	"[Error] sprintf() failed with an error\n"
 #define F_ERROR_FUNCTION_STRTOL_MSG	"[Error] strtol() failed with an error: %s\n"
 #define F_ERROR_INPUT_CLOSE_MSG		"[Error] Close input file: %s\n"
@@ -24,6 +25,7 @@
 
 FILE* IN_FILE = NULL;			/* The input file */
 FILE* OUT_FILE = NULL;			/* The output file */
+long CLOCK = LONG_MIN;			/* The current time */
 typedef struct Packets {
 	long pktID;		/* Unique ID (long int [-9223372036854775808,9223372036854775807]) */
 	long Time;		/* Arrival time (long int [-9223372036854775808,9223372036854775807]) */
@@ -217,15 +219,33 @@ packet read_packet() {
 		return NULL; /* EOF */
 	}
 } 
-/* int send_packet() { }
+/* int send_packet(packet pk) { }
  * 
  * Receive ??? XXX ??? XXX
  * ??? XXX ??? XXX
  * Return ??? XXX ??? XXX
  */
-int send_packet() { /* TODO TODO TODO */
-	return 1; /* TODO TODO TODO */
-} /* TODO TODO TODO */
+int send_packet(packet pk) { /* TODO TODO TODO  Write to output file */
+	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
+}
+/* int enqueue(packet pk) { }
+ * 
+ * Receive ??? XXX ??? XXX
+ * ??? XXX ??? XXX
+ * Return ??? XXX ??? XXX
+ */
+int enqueue(packet pk) { /* TODO TODO TODO Add packet to our data structure */
+	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
+}
+/* int dequeue(packet pk) { }
+ * 
+ * Receive ??? XXX ??? XXX
+ * ??? XXX ??? XXX
+ * Return ??? XXX ??? XXX
+ */
+int dequeue(packet pk) { /* TODO TODO TODO Remove packet from our data structure */
+	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
+}
 /* int main(int argc, char *argv[]) { }
  * 
  * Receive command line arguments
@@ -239,6 +259,7 @@ int main(int argc, char *argv[]) {
 	int input_weight = 0;		/* The weight */
 	int res = 0;			/* Temporary variable to store function response */
 	long temp = 0;			/* Temporary variable */
+	packet last_packet = malloc(sizeof(struct Packets));
 	/* Check correct call structure */
 	if (argc != 6) {
 		if (argc < 6) {
@@ -278,12 +299,23 @@ int main(int argc, char *argv[]) {
 	} else {
 		input_quantum = (int)temp; /* This is secure because we alreade validate 'temp' max&min values */
 	}
-	/* TODO TODO TODO */
+	/* Just to pass make flags */
 	input_quantum = input_weight; /* TODO XXX DELME XXX TODO */
 	input_weight = input_quantum; /* TODO XXX DELME XXX TODO */
-	while (read_packet()) { /* TODO TODO TODO */
-		send_packet(); /* TODO TODO TODO */
-	} /* TODO TODO TODO */
+	/* Start the clock :) */
+	while ((last_packet = read_packet()) != NULL) {
+		if (CLOCK < last_packet->Time) { /* The new packet is from the future... */
+/*			if (send_packet(last_packet)) {*/
+/*				fprintf(stderr, F_ERROR_XXXXXX_FAILED_MSG);*/
+/*				return program_end(EXIT_FAILURE); /* Error occurred in send_packet() /*/
+/*			}*/
+		} else { /* The packet is not from the future? How sad... */
+			if (enqueue(last_packet)) { /* Add the new packet to the data structure and keep reading for more packets with the same time */
+				fprintf(stderr, F_ERROR_ENQUEUE_FAILED_MSG, last_packet->pktID);
+				return program_end(EXIT_FAILURE); /* Error occurred in enqueue() */
+			}
+		}
+	}
 	/* Exit */
 	return program_end(EXIT_SUCCESS);
 }
