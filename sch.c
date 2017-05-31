@@ -35,10 +35,10 @@ typedef struct Packets {
 	int Dport;		/* Destination port (int [0,65535]) */
 	int length;		/* Packet length (int [64,16384]) */
 	int weight;		/* Flow weight (int [1,2147483647]) */
-	int start_byte; /* From were shold next transmition Start*/
-	Packet* next;	/* pointer to next packet in the list */
-	Packet* prev;	/* pointer to prev packet in the list */
-	int* total_num_packets;  /* pointer to the total number of packets, to be updated in every insert and delete */
+	int start_byte;		/* From were should next transmition Start */
+	struct Packets* next;		/* pointer to next packet in the list */
+	struct Packets* prev;		/* pointer to prev packet in the list */
+	int* total_num_packets;	/* pointer to the total number of packets, to be updated in every insert and delete */
 } *packet; 
 
 /* int program_end(int error) { }
@@ -127,7 +127,7 @@ int convert_strin2long(char *input, long *output, long from, long to, char *erro
 	}
 	return EXIT_SUCCESS;
 }
-/* packet read_packet() { }
+/* packet read_packet(int* total_num) { }
  * 
  * Receive nothing
  * Read one line from the input file and parse her
@@ -218,11 +218,10 @@ packet read_packet(int* total_num) {
 			return NULL; /* Invalid input, Length is too short */
 		}
 		printf("pktID='%ld', Time='%ld', Sadd='%s', Sport='%d', Dadd='%s', Dport='%d', length='%d', weight='%d'\n", pk->pktID, pk->Time, pk->Sadd, pk->Sport, pk->Dadd, pk->Dport, pk->length, pk->weight); /* TODO DEBUG XXX DELME XXX XXX */
-		pk->start_byte = 0;
-		pk->next = NULL;
-		pk->prev = NULL;
-		pk->total_num_packets = total_num;
-
+		pk->start_byte = 0; /* From were should next transmition Start */
+		pk->next = NULL; /* pointer to next packet in the list */
+		pk->prev = NULL; /* pointer to prev packet in the list */
+		pk->total_num_packets = total_num; /* pointer to the total number of packets */
 		return pk;
 	} else {
 		return NULL; /* EOF */
@@ -235,41 +234,42 @@ packet read_packet(int* total_num) {
  * Return ??? XXX ??? XXX
  */
 int send_packet(packet pk) { /* TODO TODO TODO  Write to output file */
+	pk = pk; /* TODO XXX DELME XXX TODO */
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
-/* int enqueue(packet pk) { }
+/* int enqueue(packet pk, packet* head_of_line) { }
  * 
  * Receive ??? XXX ??? XXX
  * ??? XXX ??? XXX
  * Return ??? XXX ??? XXX
  */
-int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to our data structure */
-	if(&head_of_line == NULL){			// TODO test for failure
-		&head_of_line = pk;				// pk is new head
-		pk->prev= pk;					// and his self prev and next
+int enqueue(packet pk, packet* head_of_line) { /* TODO TODO TODO Add packet to our data structure */
+	if (*head_of_line == NULL) { /* TODO test for failure */
+		*head_of_line = pk; /* pk is our new head */
+		pk->prev = pk; /* And also his prev and next */
 		pk->next = pk;
 
 	} else {
-		 pk->prev = head_of_line->prev;	// update pk prev
-		 pk->next = head_of_line;		// update pk next 
-		 &head_of_line->prev = pk;		// insert before head
-		 pk->prev.next = pk;			// pk's prev, next
+		 pk->prev = (*head_of_line)->prev; /* Update pk prev */
+		 pk->next = *head_of_line; /* Update pk next */
+		 (*head_of_line)->prev = pk; /* Insert before head */
+		 pk->prev->next = pk; /* pk's prev, next */
 	}
-	pk->total_num_packets++;			// increse counter
+	pk->total_num_packets++; /* increase counter */
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
 
-/* int dequeue(packet pk) { }
+/* int dequeue(packet pk, packet* head_of_line) { }
  * 
  * Receive ??? XXX ??? XXX
  * ??? XXX ??? XXX
  * Return ??? XXX ??? XXX
  */
-int dequeue(packet pk,packet* head_of_line) { /* TODO TODO TODO Remove packet from our data structure */
+int dequeue(packet pk, packet* head_of_line) { /* TODO TODO TODO Remove packet from our data structure */
 	pk->next->prev = pk->prev;
-	pk->prev->next = pk-->next;
-	if(&head_of_line == pk){
-		head_of_line = NULL;
+	pk->prev->next = pk->next;
+	if (*head_of_line == pk) {
+		*head_of_line = NULL;
 	}
 	free(pk);
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
@@ -287,10 +287,9 @@ int main(int argc, char *argv[]) {
 	int input_weight = 0;		/* The weight */
 	int res = 0;			/* Temporary variable to store function response */
 	long temp = 0;			/* Temporary variable */
-	int total_num_packets = 0; /*  */
-	packet* head_of_line; /*  */
+	int total_num_packets = 0;	/* TODO */
+	packet* head_of_line = NULL;	/* TODO */
 	packet last_packet = malloc(sizeof(struct Packets));
-
 	/* Check correct call structure */
 	if (argc != 6) {
 		if (argc < 6) {
@@ -334,14 +333,14 @@ int main(int argc, char *argv[]) {
 	input_quantum = input_weight; /* TODO XXX DELME XXX TODO */
 	input_weight = input_quantum; /* TODO XXX DELME XXX TODO */
 	/* Start the clock :) */
-	while ((last_packet = read_packet(*total_num_packets)) != NULL) {
+	while ((last_packet = read_packet(&total_num_packets)) != NULL) {
 		if (CLOCK < last_packet->Time) { /* The new packet is from the future... */
 /*			if (send_packet(last_packet)) {*/
 /*				fprintf(stderr, F_ERROR_XXXXXX_FAILED_MSG);*/
-/*				return program_end(EXIT_FAILURE); /* Error occurred in send_packet() /*/
+/*				return program_end(EXIT_FAILURE); / Error occurred in send_packet() /*/
 /*			}*/
 		} else { /* The packet is not from the future? How sad... */
-			if (enqueue(last_packet)) { /* Add the new packet to the data structure and keep reading for more packets with the same time */
+			if (enqueue(last_packet, head_of_line)) { /* Add the new packet to the data structure and keep reading for more packets with the same time */
 				fprintf(stderr, F_ERROR_ENQUEUE_FAILED_MSG, last_packet->pktID);
 				return program_end(EXIT_FAILURE); /* Error occurred in enqueue() */
 			}
