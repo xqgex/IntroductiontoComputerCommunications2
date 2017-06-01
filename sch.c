@@ -297,17 +297,16 @@ int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to ou
  * Return ??? XXX ??? XXX
  */
 int dequeue(packet pk, packet* head_of_line) { /* TODO TODO TODO Remove packet from our data structure */
+	if((pk->next!=NULL)&&(pk->prev!=NULL)){
 	pk->next->prev = pk->prev;
 	pk->prev->next = pk->next;
+	}
 	if (*head_of_line == pk) {
 		*head_of_line = NULL;
 	}
 	if(pk->up != NULL ){
 		pk->up->down = NULL;
 	}
-
-	}
-
 	free(pk);
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
