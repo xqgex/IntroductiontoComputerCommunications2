@@ -38,6 +38,8 @@ typedef struct Packets {
 	int start_byte; /* From were shold next transmition Start*/
 	Packet* next;	/* pointer to next packet in the list */
 	Packet* prev;	/* pointer to prev packet in the list */
+	Packet* up;	/* pointer to prev packet in the list */
+	Packet* down;	/* pointer to prev packet in the list */
 	int* total_num_packets;  /* pointer to the total number of packets, to be updated in every insert and delete */
 } *packet; 
 
@@ -243,12 +245,41 @@ int send_packet(packet pk) { /* TODO TODO TODO  Write to output file */
  * ??? XXX ??? XXX
  * Return ??? XXX ??? XXX
  */
+
+
+ int same_flow(packet* pacA,packet* pacB){ // 1 if are from the same Flow
+	if((pacA->Sport != pacB->Sport)||(pacA->Dport != pacB->Dport) ||(pacA->Sadd != pacB->Sadd) || (pacA->Dadd != pacB->Dadd)){
+		return 0;
+	}
+	//the same
+	return 1;
+ }
 int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to our data structure */
+	packet* pac = NULL;
+	int flag = 0;
+	while(flag <= 1){	
+		if(pac == head_of_line){		// complets a single round over the list.
+			flag+= 1;
+		}
+		if(same_flow(pac,pk)){			// found a flow, that pk belongs to. 
+			pk->prev = pac->prev;
+			pk->next = pac->next;
+			pk->prev->next = pk;
+			pk->next->prev = pk;
+			pk->down = pac;
+			pac->up = pk;
+			pc->next = NULL;
+			pc->prev = NULL;
+			pk->total_num_packets++;
+			return 0;
+		}
+
+	} // end of while 
+	  // havn't found a flow that pk belongs to, create a new one. 
 	if(&head_of_line == NULL){			// TODO test for failure
 		&head_of_line = pk;				// pk is new head
 		pk->prev= pk;					// and his self prev and next
 		pk->next = pk;
-
 	} else {
 		 pk->prev = head_of_line->prev;	// update pk prev
 		 pk->next = head_of_line;		// update pk next 
@@ -256,7 +287,7 @@ int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to ou
 		 pk->prev.next = pk;			// pk's prev, next
 	}
 	pk->total_num_packets++;			// increse counter
-	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
+	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */ 
 }
 
 /* int dequeue(packet pk) { }
@@ -266,11 +297,19 @@ int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to ou
  * Return ??? XXX ??? XXX
  */
 int dequeue(packet pk,packet* head_of_line) { /* TODO TODO TODO Remove packet from our data structure */
+	if((pk->prev != NULL) && (pk->next != NULL)){
 	pk->next->prev = pk->prev;
 	pk->prev->next = pk-->next;
+	}
 	if(&head_of_line == pk){
 		head_of_line = NULL;
 	}
+	if(pk->up != NULL ){
+		pk->up->down = NULL;
+	}
+
+	}
+
 	free(pk);
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
