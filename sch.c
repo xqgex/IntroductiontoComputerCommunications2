@@ -23,9 +23,9 @@
 #define F_ERROR_TYPE_MSG		"[Error] The only valid types are RR and DRR\n"
 #define F_ERROR_WEIGHT_INVALID_MSG	"[Error] The weight '%s' is not a positive integer\n"
 
-FILE* IN_FILE = NULL;			/* The input file */
-FILE* OUT_FILE = NULL;			/* The output file */
-long CLOCK = LONG_MIN;			/* The current time */
+FILE* IN_FILE = NULL;		/* The input file */
+FILE* OUT_FILE = NULL;		/* The output file */
+long CLOCK = LONG_MIN;		/* The current time */
 typedef struct Packets {
 	long pktID;		/* Unique ID (long int [-9223372036854775808,9223372036854775807]) */
 	long Time;		/* Arrival time (long int [-9223372036854775808,9223372036854775807]) */
@@ -35,13 +35,12 @@ typedef struct Packets {
 	int Dport;		/* Destination port (int [0,65535]) */
 	int length;		/* Packet length (int [64,16384]) */
 	int weight;		/* Flow weight (int [1,2147483647]) */
-	int start_byte; /* From were shold next transmition Start*/
-	Packet* next;	/* pointer to next packet in the list */
-	Packet* prev;	/* pointer to prev packet in the list */
-	Packet* up;	/* pointer to prev packet in the list */
-	Packet* down;	/* pointer to prev packet in the list */
-	int* total_num_packets;  /* pointer to the total number of packets, to be updated in every insert and delete */
-
+	int start_byte;		/* From were shold next transmition Start*/
+	struct Packets* next;	/* pointer to next packet in the list */
+	struct Packets* prev;	/* pointer to prev packet in the list */
+	struct Packets* up;	/* pointer to prev packet in the list */
+	struct Packets* down;	/* pointer to prev packet in the list */
+	int* total_num_packets;	/* pointer to the total number of packets, to be updated in every insert and delete */
 } *packet; 
 
 /* int program_end(int error) { }
@@ -247,38 +246,38 @@ int send_packet(packet pk) { /* TODO TODO TODO  Write to output file */
  * Return ??? XXX ??? XXX
  */
 
- int same_flow(packet* pacA,packet* pacB){ // 1 if are from the same Flow
+ int same_flow(packet pacA, packet pacB){ /* 1 if are from the same Flow */
 	if((pacA->Sport != pacB->Sport)||(pacA->Dport != pacB->Dport) ||(pacA->Sadd != pacB->Sadd) || (pacA->Dadd != pacB->Dadd)){
 		return 0;
 	}
-	//the same
+	/* the same */
 	return 1;
  }
 int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to our data structure */
-	packet* pac = NULL;
+	packet pac = NULL;
 	int flag = 0;
 	while(flag <= 1){	
-		if(pac == head_of_line){		// complets a single round over the list.
+		if(pac == *head_of_line){		/* complets a single round over the list. */
 			flag+= 1;
 		}
-		if(same_flow(pac,pk)){			// found a flow, that pk belongs to. 
+		if(same_flow(pac,pk)){			/* found a flow, that pk belongs to. */
 			pk->prev = pac->prev;
 			pk->next = pac->next;
 			pk->prev->next = pk;
 			pk->next->prev = pk;
 			pk->down = pac;
 			pac->up = pk;
-			pc->next = NULL;
-			pc->prev = NULL;
+			pk->next = NULL;
+			pk->prev = NULL;
 			pk->total_num_packets++;
 			return 0;
 		}
 
-	} // end of while 
-	  // havn't found a flow that pk belongs to, create a new one. 
-	if(&head_of_line == NULL){			// TODO test for failure
-		&head_of_line = pk;				// pk is new head
-		pk->prev= pk;					// and his self prev and next
+	} /* end of while */
+	  /* havn't found a flow that pk belongs to, create a new one. */
+	if(head_of_line == NULL){			/* TODO test for failure */
+		head_of_line = &pk;				/* pk is new head */
+		pk->prev= pk;					/* and his self prev and next */
 		pk->next = pk;
 	} else {
 		 pk->prev = (*head_of_line)->prev; /* Update pk prev */
@@ -286,7 +285,7 @@ int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to ou
 		 (*head_of_line)->prev = pk; /* Insert before head */
 		 pk->prev->next = pk; /* pk's prev, next */
 	}
-	pk->total_num_packets++;			// increse counter
+	pk->total_num_packets++;			/* increse counter */
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */ 
 }
 
