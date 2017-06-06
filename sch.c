@@ -23,9 +23,6 @@
 #define F_ERROR_TYPE_MSG		"[Error] The only valid types are RR and DRR\n"
 #define F_ERROR_WEIGHT_INVALID_MSG	"[Error] The weight '%s' is not a positive integer\n"
 
-FILE* IN_FILE = NULL;		/* The input file */
-FILE* OUT_FILE = NULL;		/* The output file */
-long CLOCK = LONG_MIN;		/* The current time */
 typedef struct DataStructure {
 	struct Packets* head;	/* Pointer to the head of the round double linked list */
 	int count;		/* The total number of packets, Need to be updated in every insert & delete */
@@ -41,10 +38,14 @@ typedef struct Packets {
 	int weight;		/* Flow weight (int [1,2147483647]) */
 	int start_byte;		/* From were shold next transmition Start*/
 	struct Packets* next;	/* Pointer to next packet in the list */
-	struct Packets* prev;	/* Pointer to prev packet in the list */
+	struct Packets* prev;	/* Pointer to previously packet in the list */
 	struct Packets* up;	/* Pointer to upper packet in the queue */
 	struct Packets* down;	/* Pointer to lower packet in the queue */
 } *packet; 
+FILE* IN_FILE = NULL;		/* The input file */
+FILE* OUT_FILE = NULL;		/* The output file */
+long CLOCK = LONG_MIN;		/* The current time */
+structure STRUCTURE;	/* Our data structure */
 
 /* int program_end(int error) { }
  *
@@ -245,67 +246,92 @@ int send_packet(packet pk) { /* TODO TODO TODO  Write to output file */
 	pk = pk; /* TODO XXX DELME XXX TODO */
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
-/* int same_flow(packet pacA, packet pacB) { }
+/* void copy_packet(packet* src, packet* dst) { }
  * 
- * Receive two packets
+ * Receive pointers of two packets
+ * Copy the content of the source packet to the destination packet
+ */
+void copy_packet(packet* src, packet* dst) {
+	(*dst)->pktID	= (*src)->pktID;
+	(*dst)->Time	= (*src)->Time;
+	strncpy((*dst)->Sadd,(*src)->Sadd,15);
+	(*dst)->Sport	= (*src)->Sport;
+	strncpy((*dst)->Dadd,(*src)->Dadd,15);
+	(*dst)->Dport	= (*src)->Dport;
+	(*dst)->length	= (*src)->length;
+	(*dst)->weight	= (*src)->weight;
+	(*dst)->start_byte	= (*src)->start_byte;
+	(*dst)->next	= (*src)->next;
+	(*dst)->prev	= (*src)->prev;
+	(*dst)->up	= (*src)->up;
+	(*dst)->down	= (*src)->down;
+	return;
+}
+/* int same_flow(packet* pacA, packet* pacB) { }
+ * 
+ * Receive pointer of two packets
  * Check if they belong to the same flow
  * Return 1 if both packets have the same source and destination (IP&port)
  * Return 0 o.w
  */
-int same_flow(packet pacA, packet pacB) {
-	if ((pacA->Sport != pacB->Sport)||(pacA->Dport != pacB->Dport) ||(pacA->Sadd != pacB->Sadd) || (pacA->Dadd != pacB->Dadd)) {
-		return 0;
+int same_flow(packet* pacA, packet* pacB) {
+	if ((strncmp((*pacA)->Sadd,(*pacB)->Sadd,15))&&
+	    (strncmp((*pacA)->Dadd,(*pacB)->Dadd,15))&&
+	    ((*pacA)->Sport == (*pacB)->Sport)&&
+	    ((*pacA)->Dport == (*pacB)->Dport)) {
+		return 1;
 	}
-	return 1;
+	return 0;
 }
-/* int enqueue(packet pk, packet* head_of_line) { }
+/* int enqueue(packet pk) { }
  * 
- * Receive ??? XXX ??? XXX
- * ??? XXX ??? XXX
- * Return ??? XXX ??? XXX
+ * Receive packet
+ * Add the packet to our data structure
+ * Return 0 on success and 1 in case of an error
  */
-int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to our data structure */
-	packet pac = malloc(sizeof(struct Packets));
-	int flag = 0;
-	printf("F_0\n"); /* TODO XXX DEBUG DELME XXX */
-	while (flag <= 1) {
-		printf("F_0.5\n"); /* TODO XXX DEBUG DELME XXX */
-		if (&pac == head_of_line) { /* Complets a single round over the list. */
-			flag += 1;
-			printf("F_1\n"); /* TODO XXX DEBUG DELME XXX */
-		}
-		printf("F_1.5\n"); /* TODO XXX DEBUG DELME XXX */
-		if (same_flow(pac,pk)) { /* Found a flow, that pk belongs to. */
-			printf("F_2\n"); /* TODO XXX DEBUG DELME XXX */
-			pk->prev = pac->prev;
-			pk->next = pac->next;
-			pk->prev->next = pk;
-			pk->next->prev = pk;
-			pk->down = pac;
-			pac->up = pk;
-			pk->next = NULL;
-			pk->prev = NULL;
-			pk->total_num_packets++;
-			return 0;
-		}
-	}
-	/* Havn't found a flow that pk belongs to, create a new one. */
-	printf("F_3\n"); /* TODO XXX DEBUG DELME XXX */
-	if(head_of_line == NULL){ /* TODO test for failure */
-		printf("F_4\n"); /* TODO XXX DEBUG DELME XXX */
-		head_of_line = &pk; /* pk is new head */
-		pk->prev = pk; /* And his self prev and next */
-		pk->next = pk;
+int enqueue(packet pk) {
+	/* Function variables */
+	packet* search_head = NULL; /* Pointer to the current element in our round double linked list */
+	/* Init the new packet */
+	packet new_pk = malloc(sizeof(struct Packets));
+	copy_packet(&new_pk,&pk);
+	if (STRUCTURE->head == NULL) { /* This is the first packet in our data structure */
+		STRUCTURE->head = new_pk; /* The new packet is our new head */
+		new_pk->prev = new_pk; /* And he his the prev and next of himself */
+		new_pk->next = new_pk;
+		STRUCTURE->count = 1; /* We only have one packet in our data structure */
 	} else {
-		printf("F_5\n"); /* TODO XXX DEBUG DELME XXX */
-		pk->prev = (*head_of_line)->prev; /* Update pk prev */
-		pk->next = *head_of_line; /* Update pk next */
-		(*head_of_line)->prev = pk; /* Insert before head */
-		pk->prev->next = pk; /* pk's prev, next */
+		/* Search if the packet belong to an old flow */
+		search_head = &(STRUCTURE->head);
+		do {
+			if (same_flow(search_head,&new_pk)) { /* If we found a flow that the new packet belongs to */
+				/* Update the packet before and after to point on the new packet */
+				(*search_head)->prev->next = new_pk;
+				(*search_head)->next->prev = new_pk;
+				/* Connect the new packet to the packets before and after */
+				new_pk->next = (*search_head)->next;
+				new_pk->prev = (*search_head)->prev;
+				/* Disconect the old packet */
+				(*search_head)->next = NULL;
+				(*search_head)->prev = NULL;
+				/* Connect the old and the new packets with the up/down pointers */
+				new_pk->down = *search_head;
+				(*search_head)->up = new_pk;
+				/* Finish */
+				STRUCTURE->count++; /* We added one packet to the data structure */
+				return 0;
+			}
+			search_head = &((*search_head)->next); /* Move our search head to the next element */
+		} while (search_head != &(STRUCTURE->head)); /* Until we complets a single round over the list */
+		/* Havn't found a flow that the new packet belongs to => Create a new one */
+		new_pk->next = STRUCTURE->head;
+		new_pk->prev = STRUCTURE->head->prev;
+		STRUCTURE->head->prev->next = new_pk;
+		STRUCTURE->head->prev = new_pk;
+		/* Finish */
+		STRUCTURE->count++; /* We added one packet to the data structure */
 	}
-	printf("F_6\n"); /* TODO XXX DEBUG DELME XXX */
-	pk->total_num_packets++; /* increse counter */
-	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
+	return 0;
 }
 
 /* int dequeue(packet pk, packet* head_of_line) { }
@@ -328,17 +354,17 @@ int dequeue(packet pk, packet* head_of_line) { /* TODO TODO TODO Remove packet f
 	free(pk);
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
-/* void print(packet* head_of_line) { }
+/* void print() { }
  * 
  * Print the packets in line
  * For debugging and support use only!!!
  */
-void print(packet* head_of_line) {
-	packet pkt = *head_of_line;
+void print() {
+	packet* pkt = &(STRUCTURE->head);
 	printf("╔════════════════════════════════════════════════════════════════════════╗\n");
-	printf("║ Current time=%20ld Number of waiting packets=%10i ║\n", CLOCK, *(pkt->total_num_packets));
+	printf("║ Current time=%-20ld Number of waiting packets=%-10i ║\n", CLOCK, STRUCTURE->count);
 	printf("╠═════════════════════════╤═══════════════════════════╤══════════════════╣\n");
-	printf("║ ID=%20ld │ Time=%20ld │ Size=%5i/%5i ║\n", pkt->pktID, pkt->Time, pkt->start_byte, pkt->length);
+	printf("║ ID=%-20ld │ Time=%-20ld │ Size=%5i/%-5i ║\n", (*pkt)->pktID, (*pkt)->Time, (*pkt)->start_byte, (*pkt)->length);
 	printf("╚═════════════════════════╧═══════════════════════════╧══════════════════╝\n");
 	/*╔══════════════════════════════════╤═══════════════════════╤════════════════╗*/
 	/*║               Col1               │         Col2          │      Col3      ║*/
@@ -361,9 +387,7 @@ int main(int argc, char *argv[]) {
 	int input_weight = 0;		/* The weight */
 	int res = 0;			/* Temporary variable to store function response */
 	long temp = 0;			/* Temporary variable */
-	int total_num_packets = 0;	/* TODO */
-	packet* head_of_line = NULL;	/* TODO */
-	packet last_packet = malloc(sizeof(struct Packets));
+	packet last_packet = NULL;	/* Temporary variable for the last readed packet from the input file */
 	/* Check correct call structure */
 	if (argc != 6) {
 		if (argc < 6) {
@@ -403,8 +427,11 @@ int main(int argc, char *argv[]) {
 	} else {
 		input_quantum = (int)temp; /* This is secure because we alreade validate 'temp' max&min values */
 	}
+	/* Init variables */
+	STRUCTURE = (structure)malloc(sizeof(struct DataStructure)); /* TODO free memory */
+	last_packet = malloc(sizeof(struct Packets)); /* TODO free memory */
 	input_quantum = input_weight; /* TODO XXX DELME XXX TODO */
-	/* Start the clock :) */
+	input_quantum = input_quantum; /* TODO XXX DELME XXX TODO */
 	/* Weighted Round Robin
 	 * 1) If total weights is W, it takes W rounds to complete a cycle.
 	 * 2) Each flow i transmits w[i] packets in a cycle.
@@ -414,7 +441,8 @@ int main(int argc, char *argv[]) {
 	 * 2) Credit counter is increased by “quantum” with every cycle.
 	 * 3) A packet is sent only if there is enough credit.
 	 */
-	while ((last_packet = read_packet(input_weight)) != NULL) {
+	/* Start the clock :) */
+	while ((last_packet = read_packet(input_weight)) != NULL) { /* while there are more packets in file */ /* TODO we will be needed to add check that we also finish to send everything */
 		printf("F_-3\n"); /* TODO XXX DEBUG DELME XXX */
 		if (CLOCK < last_packet->Time) { /* The new packet is from the future... */
 			printf("F_-2\n"); /* TODO XXX DEBUG DELME XXX */
@@ -425,11 +453,11 @@ int main(int argc, char *argv[]) {
 			CLOCK = last_packet->Time;
 		} else { /* The packet is not from the future? How sad... */
 			printf("F_-1\n"); /* TODO XXX DEBUG DELME XXX */
-			if (enqueue(last_packet, head_of_line)) { /* Add the new packet to the data structure and keep reading for more packets with the same time */
+			if (enqueue(last_packet)) { /* Add the new packet to the data structure and keep reading for more packets with the same time */
 				fprintf(stderr, F_ERROR_ENQUEUE_FAILED_MSG, last_packet->pktID);
 				return program_end(EXIT_FAILURE); /* Error occurred in enqueue() */
 			}
-			print(head_of_line); /* TODO XXX DELME XXX TODO */
+			print(); /* TODO XXX DELME XXX TODO */
 			return 0; /* TODO XXX DELME XXX TODO */
 		}
 	}
