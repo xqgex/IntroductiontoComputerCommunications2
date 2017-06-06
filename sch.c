@@ -24,7 +24,7 @@
 #define F_ERROR_WEIGHT_INVALID_MSG	"[Error] The weight '%s' is not a positive integer\n"
 
 typedef struct DataStructure {
-	struct Packets* head;	/* Pointer to the head of the round double linked list */
+	struct Packets** head;	/* Pointer to the head of the round double linked list */
 	int count;		/* The total number of packets, Need to be updated in every insert & delete */
 } *structure; 
 typedef struct Packets {
@@ -37,10 +37,10 @@ typedef struct Packets {
 	int length;		/* Packet length (int [64,16384]) */
 	int weight;		/* Flow weight (int [1,2147483647]) */
 	int start_byte;		/* From were shold next transmition Start*/
-	struct Packets* next;	/* Pointer to next packet in the list */
-	struct Packets* prev;	/* Pointer to previously packet in the list */
-	struct Packets* up;	/* Pointer to upper packet in the queue */
-	struct Packets* down;	/* Pointer to lower packet in the queue */
+	struct Packets** next;	/* Pointer to next packet in the list */
+	struct Packets** prev;	/* Pointer to previously packet in the list */
+	struct Packets** up;	/* Pointer to upper packet in the queue */
+	struct Packets** down;	/* Pointer to lower packet in the queue */
 } *packet; 
 FILE* IN_FILE = NULL;		/* The input file */
 FILE* OUT_FILE = NULL;		/* The output file */
@@ -225,7 +225,7 @@ packet read_packet(int default_weight) {
 		if (count < 7) {
 			return NULL; /* Invalid input, Length is too short */
 		}
-		printf("pktID='%ld', Time='%ld', Sadd='%s', Sport='%d', Dadd='%s', Dport='%d', length='%d', weight='%d'\n", pk->pktID, pk->Time, pk->Sadd, pk->Sport, pk->Dadd, pk->Dport, pk->length, pk->weight); /* TODO DEBUG XXX DELME XXX XXX */
+		printf("[A] pktID='%ld', Time='%ld', Sadd='%s', Sport='%d', Dadd='%s', Dport='%d', length='%d', weight='%d'\n", pk->pktID, pk->Time, pk->Sadd, pk->Sport, pk->Dadd, pk->Dport, pk->length, pk->weight); /* TODO DEBUG XXX DELME XXX XXX */
 		pk->start_byte = 0; /* From were should next transmition Start */
 		pk->next = NULL; /* Pointer to next packet in the list */
 		pk->prev = NULL; /* Pointer to prev packet in the list */
@@ -294,20 +294,22 @@ int enqueue(packet pk) {
 	packet* search_head = NULL; /* Pointer to the current element in our round double linked list */
 	/* Init the new packet */
 	packet new_pk = malloc(sizeof(struct Packets));
-	copy_packet(&new_pk,&pk);
+	copy_packet(&pk,&new_pk);
+	printf("[B] pktID='%ld', Time='%ld', Sadd='%s', Sport='%d', Dadd='%s', Dport='%d', length='%d', weight='%d'\n", new_pk->pktID, new_pk->Time, new_pk->Sadd, new_pk->Sport, new_pk->Dadd, new_pk->Dport, new_pk->length, new_pk->weight); /* TODO DEBUG XXX DELME XXX XXX */
 	if (STRUCTURE->head == NULL) { /* This is the first packet in our data structure */
-		STRUCTURE->head = new_pk; /* The new packet is our new head */
-		new_pk->prev = new_pk; /* And he his the prev and next of himself */
-		new_pk->next = new_pk;
+		STRUCTURE->head = &new_pk; /* The new packet is our new head */
+		new_pk->prev = &new_pk; /* And he his the prev and next of himself */
+		new_pk->next = &new_pk;
+		printf("Pointers: [new_pk]%p=>%p [head]%p=>%p\n", (void *)&new_pk, (void *)(new_pk->next), (void *)(STRUCTURE->head), (void *)((*(STRUCTURE->head))->next)); /* XXX */
 		STRUCTURE->count = 1; /* We only have one packet in our data structure */
 	} else {
 		/* Search if the packet belong to an old flow */
-		search_head = &(STRUCTURE->head);
+		search_head = STRUCTURE->head;
 		do {
 			if (same_flow(search_head,&new_pk)) { /* If we found a flow that the new packet belongs to */
 				/* Update the packet before and after to point on the new packet */
-				(*search_head)->prev->next = new_pk;
-				(*search_head)->next->prev = new_pk;
+				(*(*search_head)->prev)->next = &new_pk;
+				(*(*search_head)->next)->prev = &new_pk;
 				/* Connect the new packet to the packets before and after */
 				new_pk->next = (*search_head)->next;
 				new_pk->prev = (*search_head)->prev;
@@ -315,19 +317,19 @@ int enqueue(packet pk) {
 				(*search_head)->next = NULL;
 				(*search_head)->prev = NULL;
 				/* Connect the old and the new packets with the up/down pointers */
-				new_pk->down = *search_head;
-				(*search_head)->up = new_pk;
+				new_pk->down = search_head;
+				(*search_head)->up = &new_pk;
 				/* Finish */
 				STRUCTURE->count++; /* We added one packet to the data structure */
 				return 0;
 			}
-			search_head = &((*search_head)->next); /* Move our search head to the next element */
-		} while (search_head != &(STRUCTURE->head)); /* Until we complets a single round over the list */
+			search_head = (*search_head)->next; /* Move our search head to the next element */
+		} while (search_head != STRUCTURE->head); /* Until we complets a single round over the list */
 		/* Havn't found a flow that the new packet belongs to => Create a new one */
 		new_pk->next = STRUCTURE->head;
-		new_pk->prev = STRUCTURE->head->prev;
-		STRUCTURE->head->prev->next = new_pk;
-		STRUCTURE->head->prev = new_pk;
+		new_pk->prev = (*STRUCTURE->head)->prev;
+		(*(*STRUCTURE->head)->prev)->next = &new_pk;
+		(*STRUCTURE->head)->prev = &new_pk;
 		/* Finish */
 		STRUCTURE->count++; /* We added one packet to the data structure */
 	}
@@ -342,14 +344,14 @@ int enqueue(packet pk) {
  */
 int dequeue(packet pk, packet* head_of_line) { /* TODO TODO TODO Remove packet from our data structure */
 	if((pk->next!=NULL)&&(pk->prev!=NULL)){
-	pk->next->prev = pk->prev;
-	pk->prev->next = pk->next;
+	(*pk->next)->prev = pk->prev;
+	(*pk->prev)->next = pk->next;
 	}
 	if (*head_of_line == pk) {
 		*head_of_line = NULL;
 	}
 	if(pk->up != NULL ){
-		pk->up->down = NULL;
+		(*pk->up)->down = NULL;
 	}
 	free(pk);
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
@@ -360,11 +362,16 @@ int dequeue(packet pk, packet* head_of_line) { /* TODO TODO TODO Remove packet f
  * For debugging and support use only!!!
  */
 void print() {
-	packet* pkt = &(STRUCTURE->head);
+	packet* pkt = STRUCTURE->head;
+	printf("Pointers: [pkt]%p=>%p [head]%p=>%p\n", (void *)pkt, (void *)(*pkt)->next, (void *)(STRUCTURE->head), (void *)((*STRUCTURE->head)->next)); /* XXX */
 	printf("╔════════════════════════════════════════════════════════════════════════╗\n");
 	printf("║ Current time=%-20ld Number of waiting packets=%-10i ║\n", CLOCK, STRUCTURE->count);
 	printf("╠═════════════════════════╤═══════════════════════════╤══════════════════╣\n");
-	printf("║ ID=%-20ld │ Time=%-20ld │ Size=%5i/%-5i ║\n", (*pkt)->pktID, (*pkt)->Time, (*pkt)->start_byte, (*pkt)->length);
+	do {
+		printf("Pointers: [pkt]%p=>%p [head]%p=>%p\n", (void *)pkt, (void *)(*pkt)->next, (void *)(STRUCTURE->head), (void *)((*STRUCTURE->head)->next)); /* XXX */
+		printf("║ ID=%-20ld │ Time=%-20ld │ Sent=%5i/%-5i ║\n", (*pkt)->pktID, (*pkt)->Time, (*pkt)->start_byte, (*pkt)->length);
+		pkt = (*pkt)->next; /* Move to the next element */
+	} while (pkt != STRUCTURE->head); /* Until we complets a single round over the list */
 	printf("╚═════════════════════════╧═══════════════════════════╧══════════════════╝\n");
 	/*╔══════════════════════════════════╤═══════════════════════╤════════════════╗*/
 	/*║               Col1               │         Col2          │      Col3      ║*/
@@ -429,6 +436,8 @@ int main(int argc, char *argv[]) {
 	}
 	/* Init variables */
 	STRUCTURE = (structure)malloc(sizeof(struct DataStructure)); /* TODO free memory */
+	STRUCTURE->head = NULL;
+	STRUCTURE->count = 0;
 	last_packet = malloc(sizeof(struct Packets)); /* TODO free memory */
 	input_quantum = input_weight; /* TODO XXX DELME XXX TODO */
 	input_quantum = input_quantum; /* TODO XXX DELME XXX TODO */
@@ -443,14 +452,17 @@ int main(int argc, char *argv[]) {
 	 */
 	/* Start the clock :) */
 	while ((last_packet = read_packet(input_weight)) != NULL) { /* while there are more packets in file */ /* TODO we will be needed to add check that we also finish to send everything */
-		printf("F_-3\n"); /* TODO XXX DEBUG DELME XXX */
-		if (CLOCK < last_packet->Time) { /* The new packet is from the future... */
+		printf("F_-4\n"); /* TODO XXX DEBUG DELME XXX */
+		if ((CLOCK < last_packet->Time)&&(STRUCTURE->count == 0)) { /* The new packet is from the future... Adjust the clock */
+			printf("F_-3\n"); /* TODO XXX DEBUG DELME XXX */
+			CLOCK = last_packet->Time;
+		} else if (CLOCK < last_packet->Time) { /* It's time to do some calculations */
 			printf("F_-2\n"); /* TODO XXX DEBUG DELME XXX */
 /*			if (send_packet(last_packet)) {*/
 /*				fprintf(stderr, F_ERROR_XXXXXX_FAILED_MSG);*/
 /*				return program_end(EXIT_FAILURE); / Error occurred in send_packet() /*/
 /*			}*/
-			CLOCK = last_packet->Time;
+			return 0; /* TODO XXX DELME XXX TODO */
 		} else { /* The packet is not from the future? How sad... */
 			printf("F_-1\n"); /* TODO XXX DEBUG DELME XXX */
 			if (enqueue(last_packet)) { /* Add the new packet to the data structure and keep reading for more packets with the same time */
@@ -458,7 +470,6 @@ int main(int argc, char *argv[]) {
 				return program_end(EXIT_FAILURE); /* Error occurred in enqueue() */
 			}
 			print(); /* TODO XXX DELME XXX TODO */
-			return 0; /* TODO XXX DELME XXX TODO */
 		}
 	}
 	/* Exit */
