@@ -26,6 +26,10 @@
 FILE* IN_FILE = NULL;		/* The input file */
 FILE* OUT_FILE = NULL;		/* The output file */
 long CLOCK = LONG_MIN;		/* The current time */
+typedef struct DataStructure {
+	struct Packets* head;	/* Pointer to the head of the round double linked list */
+	int count;		/* The total number of packets, Need to be updated in every insert & delete */
+} *structure; 
 typedef struct Packets {
 	long pktID;		/* Unique ID (long int [-9223372036854775808,9223372036854775807]) */
 	long Time;		/* Arrival time (long int [-9223372036854775808,9223372036854775807]) */
@@ -36,11 +40,10 @@ typedef struct Packets {
 	int length;		/* Packet length (int [64,16384]) */
 	int weight;		/* Flow weight (int [1,2147483647]) */
 	int start_byte;		/* From were shold next transmition Start*/
-	struct Packets* next;	/* pointer to next packet in the list */
-	struct Packets* prev;	/* pointer to prev packet in the list */
-	struct Packets* up;	/* pointer to prev packet in the list */
-	struct Packets* down;	/* pointer to prev packet in the list */
-	int* total_num_packets;	/* pointer to the total number of packets, to be updated in every insert and delete */
+	struct Packets* next;	/* Pointer to next packet in the list */
+	struct Packets* prev;	/* Pointer to prev packet in the list */
+	struct Packets* up;	/* Pointer to upper packet in the queue */
+	struct Packets* down;	/* Pointer to lower packet in the queue */
 } *packet; 
 
 /* int program_end(int error) { }
@@ -136,7 +139,7 @@ int convert_strin2long(char *input, long *output, long from, long to, char *erro
  * Return packet object if read succeed,
  * Return NULL in case EOF reached or if an error occurred.
  */
-packet read_packet(int* total_num) {
+packet read_packet(int default_weight) {
 	/* Function variables */
 	char line[105];	/* 105 == pktID[20]+Time[20]+Sadd[15]+Sport[5]+Dadd[15]+Dport[5]+length[5]+weight[11]+spaces[7]+"\r\n"[2] */
 	char *word;	/* Each string splited by whitespace */
@@ -199,7 +202,7 @@ packet read_packet(int* total_num) {
 					pk->Dport = (int)temp; /* This is secure because we alreade validate 'temp' max&min values */
 				}
 			} else if ((count == 6)&&(strlen(word) <= 5)) {
-				if ((res = convert_strin2long(word, &temp, 64, 16384, F_ERROR_LENGTH_INVALID_MSG)) > 0) {
+				if ((res = convert_strin2long(word, &temp, 1, 16384, F_ERROR_LENGTH_INVALID_MSG)) > 0) { /* TODO TODO TODO Change from 1 to 64 TODO TODO TODO !!!!!!!!!!!!! */
 					return NULL; /* Error occurred, Exit */
 				} else {
 					pk->length = (int)temp; /* This is secure because we alreade validate 'temp' max&min values */
@@ -207,8 +210,10 @@ packet read_packet(int* total_num) {
 			} else if ((count == 7)&&(strlen(word) <= 11)) {
 				if ((res = convert_strin2long(word, &temp, 1, INT_MAX, F_ERROR_WEIGHT_INVALID_MSG)) > 0) {
 					return NULL; /* Error occurred, Exit */
-				} else {
+				} else if (temp) { /* There was a value for weight in the input file */
 					pk->weight = (int)temp; /* This is secure because we alreade validate 'temp' max&min values */
+				} else {
+					pk->weight = default_weight; /* Use the default weight */
 				}
 			} else {
 				return NULL; /* Invalid input, Length is too long */
@@ -221,9 +226,10 @@ packet read_packet(int* total_num) {
 		}
 		printf("pktID='%ld', Time='%ld', Sadd='%s', Sport='%d', Dadd='%s', Dport='%d', length='%d', weight='%d'\n", pk->pktID, pk->Time, pk->Sadd, pk->Sport, pk->Dadd, pk->Dport, pk->length, pk->weight); /* TODO DEBUG XXX DELME XXX XXX */
 		pk->start_byte = 0; /* From were should next transmition Start */
-		pk->next = NULL; /* pointer to next packet in the list */
-		pk->prev = NULL; /* pointer to prev packet in the list */
-		pk->total_num_packets = total_num; /* pointer to the total number of packets */
+		pk->next = NULL; /* Pointer to next packet in the list */
+		pk->prev = NULL; /* Pointer to prev packet in the list */
+		pk->up = NULL; /* Pointer to upper packet in the queue */
+		pk->down = NULL; /* Pointer to lower packet in the queue */
 		return pk;
 	} else {
 		return NULL; /* EOF */
@@ -239,28 +245,38 @@ int send_packet(packet pk) { /* TODO TODO TODO  Write to output file */
 	pk = pk; /* TODO XXX DELME XXX TODO */
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
+/* int same_flow(packet pacA, packet pacB) { }
+ * 
+ * Receive two packets
+ * Check if they belong to the same flow
+ * Return 1 if both packets have the same source and destination (IP&port)
+ * Return 0 o.w
+ */
+int same_flow(packet pacA, packet pacB) {
+	if ((pacA->Sport != pacB->Sport)||(pacA->Dport != pacB->Dport) ||(pacA->Sadd != pacB->Sadd) || (pacA->Dadd != pacB->Dadd)) {
+		return 0;
+	}
+	return 1;
+}
 /* int enqueue(packet pk, packet* head_of_line) { }
  * 
  * Receive ??? XXX ??? XXX
  * ??? XXX ??? XXX
  * Return ??? XXX ??? XXX
  */
-
- int same_flow(packet pacA, packet pacB){ /* 1 if are from the same Flow */
-	if((pacA->Sport != pacB->Sport)||(pacA->Dport != pacB->Dport) ||(pacA->Sadd != pacB->Sadd) || (pacA->Dadd != pacB->Dadd)){
-		return 0;
-	}
-	/* the same */
-	return 1;
- }
 int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to our data structure */
-	packet pac = NULL;
+	packet pac = malloc(sizeof(struct Packets));
 	int flag = 0;
-	while(flag <= 1){	
-		if(pac == *head_of_line){		/* complets a single round over the list. */
-			flag+= 1;
+	printf("F_0\n"); /* TODO XXX DEBUG DELME XXX */
+	while (flag <= 1) {
+		printf("F_0.5\n"); /* TODO XXX DEBUG DELME XXX */
+		if (&pac == head_of_line) { /* Complets a single round over the list. */
+			flag += 1;
+			printf("F_1\n"); /* TODO XXX DEBUG DELME XXX */
 		}
-		if(same_flow(pac,pk)){			/* found a flow, that pk belongs to. */
+		printf("F_1.5\n"); /* TODO XXX DEBUG DELME XXX */
+		if (same_flow(pac,pk)) { /* Found a flow, that pk belongs to. */
+			printf("F_2\n"); /* TODO XXX DEBUG DELME XXX */
 			pk->prev = pac->prev;
 			pk->next = pac->next;
 			pk->prev->next = pk;
@@ -272,21 +288,24 @@ int enqueue(packet pk,packet* head_of_line) { /* TODO TODO TODO Add packet to ou
 			pk->total_num_packets++;
 			return 0;
 		}
-
-	} /* end of while */
-	  /* havn't found a flow that pk belongs to, create a new one. */
-	if(head_of_line == NULL){			/* TODO test for failure */
-		head_of_line = &pk;				/* pk is new head */
-		pk->prev= pk;					/* and his self prev and next */
+	}
+	/* Havn't found a flow that pk belongs to, create a new one. */
+	printf("F_3\n"); /* TODO XXX DEBUG DELME XXX */
+	if(head_of_line == NULL){ /* TODO test for failure */
+		printf("F_4\n"); /* TODO XXX DEBUG DELME XXX */
+		head_of_line = &pk; /* pk is new head */
+		pk->prev = pk; /* And his self prev and next */
 		pk->next = pk;
 	} else {
-		 pk->prev = (*head_of_line)->prev; /* Update pk prev */
-		 pk->next = *head_of_line; /* Update pk next */
-		 (*head_of_line)->prev = pk; /* Insert before head */
-		 pk->prev->next = pk; /* pk's prev, next */
+		printf("F_5\n"); /* TODO XXX DEBUG DELME XXX */
+		pk->prev = (*head_of_line)->prev; /* Update pk prev */
+		pk->next = *head_of_line; /* Update pk next */
+		(*head_of_line)->prev = pk; /* Insert before head */
+		pk->prev->next = pk; /* pk's prev, next */
 	}
-	pk->total_num_packets++;			/* increse counter */
-	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */ 
+	printf("F_6\n"); /* TODO XXX DEBUG DELME XXX */
+	pk->total_num_packets++; /* increse counter */
+	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
 
 /* int dequeue(packet pk, packet* head_of_line) { }
@@ -309,10 +328,30 @@ int dequeue(packet pk, packet* head_of_line) { /* TODO TODO TODO Remove packet f
 	free(pk);
 	return 0; /* TODO TODO TODO Return 0 on success & 1 on failure */
 }
+/* void print(packet* head_of_line) { }
+ * 
+ * Print the packets in line
+ * For debugging and support use only!!!
+ */
+void print(packet* head_of_line) {
+	packet pkt = *head_of_line;
+	printf("╔════════════════════════════════════════════════════════════════════════╗\n");
+	printf("║ Current time=%20ld Number of waiting packets=%10i ║\n", CLOCK, *(pkt->total_num_packets));
+	printf("╠═════════════════════════╤═══════════════════════════╤══════════════════╣\n");
+	printf("║ ID=%20ld │ Time=%20ld │ Size=%5i/%5i ║\n", pkt->pktID, pkt->Time, pkt->start_byte, pkt->length);
+	printf("╚═════════════════════════╧═══════════════════════════╧══════════════════╝\n");
+	/*╔══════════════════════════════════╤═══════════════════════╤════════════════╗*/
+	/*║               Col1               │         Col2          │      Col3      ║*/
+	/*╠══════════════════════════════════╪═══════════════════════╪════════════════╣*/
+	/*║                                  │                       │                ║*/
+	/*║                                  │                       │                ║*/
+	/*║                                  │                       │                ║*/
+	/*╚══════════════════════════════════╧═══════════════════════╧════════════════╝*/
+}
 /* int main(int argc, char *argv[]) { }
  * 
  * Receive command line arguments
- * ??? XXX ??? XXX
+ * Simulate round robin algorithm
  * Return the program exit code
  */
 int main(int argc, char *argv[]) {
@@ -364,21 +403,34 @@ int main(int argc, char *argv[]) {
 	} else {
 		input_quantum = (int)temp; /* This is secure because we alreade validate 'temp' max&min values */
 	}
-	/* Just to pass make flags */
 	input_quantum = input_weight; /* TODO XXX DELME XXX TODO */
-	input_weight = input_quantum; /* TODO XXX DELME XXX TODO */
 	/* Start the clock :) */
-	while ((last_packet = read_packet(&total_num_packets)) != NULL) {
+	/* Weighted Round Robin
+	 * 1) If total weights is W, it takes W rounds to complete a cycle.
+	 * 2) Each flow i transmits w[i] packets in a cycle.
+	 * 
+	 * Deficit Round Robin
+	 * 1) Each flow has a credit counter.
+	 * 2) Credit counter is increased by “quantum” with every cycle.
+	 * 3) A packet is sent only if there is enough credit.
+	 */
+	while ((last_packet = read_packet(input_weight)) != NULL) {
+		printf("F_-3\n"); /* TODO XXX DEBUG DELME XXX */
 		if (CLOCK < last_packet->Time) { /* The new packet is from the future... */
+			printf("F_-2\n"); /* TODO XXX DEBUG DELME XXX */
 /*			if (send_packet(last_packet)) {*/
 /*				fprintf(stderr, F_ERROR_XXXXXX_FAILED_MSG);*/
 /*				return program_end(EXIT_FAILURE); / Error occurred in send_packet() /*/
 /*			}*/
+			CLOCK = last_packet->Time;
 		} else { /* The packet is not from the future? How sad... */
+			printf("F_-1\n"); /* TODO XXX DEBUG DELME XXX */
 			if (enqueue(last_packet, head_of_line)) { /* Add the new packet to the data structure and keep reading for more packets with the same time */
 				fprintf(stderr, F_ERROR_ENQUEUE_FAILED_MSG, last_packet->pktID);
 				return program_end(EXIT_FAILURE); /* Error occurred in enqueue() */
 			}
+			print(head_of_line); /* TODO XXX DELME XXX TODO */
+			return 0; /* TODO XXX DELME XXX TODO */
 		}
 	}
 	/* Exit */
